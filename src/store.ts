@@ -155,6 +155,7 @@ export class MemoryStore {
   private table: LanceDB.Table | null = null;
   private initPromise: Promise<void> | null = null;
   private ftsIndexCreated = false;
+  private lastFtsError: string | null = null;
 
   constructor(private readonly config: StoreConfig) {}
 
@@ -257,12 +258,15 @@ export class MemoryStore {
     try {
       await this.createFtsIndex(table);
       this.ftsIndexCreated = true;
+      this.lastFtsError = null;
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       console.warn(
         "Failed to create FTS index, falling back to vector-only search:",
-        err,
+        errMsg,
       );
       this.ftsIndexCreated = false;
+      this.lastFtsError = errMsg;
     }
 
     this.db = db;
@@ -396,7 +400,7 @@ export class MemoryStore {
     const safeLimit = clampInt(limit, 1, 20);
     const fetchLimit = Math.min(safeLimit * 10, 200); // Over-fetch for scope filtering
 
-    let query = this.table!.vectorSearch(vector).limit(fetchLimit);
+    let query = this.table!.vectorSearch(vector).distanceType('cosine').limit(fetchLimit);
 
     // Apply scope filter if provided
     if (scopeFilter && scopeFilter.length > 0) {
@@ -792,5 +796,46 @@ export class MemoryStore {
 
   get hasFtsSupport(): boolean {
     return this.ftsIndexCreated;
+  }
+
+  getFtsStatus(): { supported: boolean; indexExists: boolean; lastError: string | null } {
+    return {
+      supported: this.ftsIndexCreated,
+      indexExists: this.ftsIndexCreated,
+      lastError: this.lastFtsError,
+    };
+  }
+
+  async rebuildFtsIndex(): Promise<{ success: boolean; error?: string }> {
+    await this.ensureInitialized();
+    if (!this.table) {
+      return { success: false, error: "Table not initialized" };
+    }
+
+    // Drop existing FTS index if present
+    try {
+      const indices = await this.table.listIndices();
+      const ftsIndex = indices?.find(
+        (idx: any) => idx.indexType === "FTS" || idx.columns?.includes("text"),
+      );
+      if (ftsIndex && ftsIndex.name) {
+        await this.table.dropIndex(ftsIndex.name);
+      }
+    } catch {
+      // Proceed even if drop fails
+    }
+
+    // Rebuild
+    try {
+      await this.createFtsIndex(this.table);
+      this.ftsIndexCreated = true;
+      this.lastFtsError = null;
+      return { success: true };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.ftsIndexCreated = false;
+      this.lastFtsError = errMsg;
+      return { success: false, error: errMsg };
+    }
   }
 }
