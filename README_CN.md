@@ -211,10 +211,18 @@ Query → BM25 FTS ─────┘
     - `Lessons & pitfalls` → `fact`
     - `Decisions (durable)` → `decision`
   - `Context`、`Open loops`、`Retrieval tags`、`Invariants`、`Derived` 不会被自动映射成普通 durable memory 类别。
-- 注入 / 加载行为：
-  - `before_agent_start` 从 reflection item rows 注入 `<inherited-rules>`，并兼容旧版 `invariants[]` 回退。
-  - `before_prompt_build` 从 reflection item rows 注入 `<derived-focus>` 与 `<error-detected>`，并兼容旧版 `derived[]` 回退。
-  - 多条近期 reflection item 在 reflection loading / injection 阶段使用 logistic decay 排序；这**不会**修改全局 retriever 评分链路。
+- 衰减算法与内置档位：
+  - reflection loading / injection 阶段使用 logistic decay；这**不会**修改全局 retriever 评分链路。
+  - 公式：`weight = 1 / (1 + exp(k * (ageDays - midpointDays)))`
+  - reflection item 内置档位：
+    - `invariant`：midpointDays=`45`，`k=0.22`，`baseWeight=1.10`，`quality=1.00`
+    - `derived`：midpointDays=`7`，`k=0.65`，`baseWeight=1.00`，`quality=0.95`
+  - mapped durable-memory 内置档位：
+    - `decision`：midpointDays=`45`，`k=0.25`，`baseWeight=1.10`，`quality=1.00`
+    - `user-model`：midpointDays=`21`，`k=0.30`，`baseWeight=1.00`，`quality=0.95`
+    - `agent-model`：midpointDays=`10`，`k=0.35`，`baseWeight=0.95`，`quality=0.93`
+    - `lesson`：midpointDays=`7`，`k=0.45`，`baseWeight=0.90`，`quality=0.90`
+  - 这些衰减参数当前属于插件写入的实现内置 metadata，不是用户可直接配置的 `memoryReflection.*` schema 字段。
   - fallback 生成的记录会额外乘以 `0.75` 惩罚因子。
 - 独立代理（可选）：
   - `memoryReflection.agentId` 可指向专门的 reflection agent（如 `memory-distiller`）。

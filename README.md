@@ -211,10 +211,18 @@ Filters out low-quality content at both auto-capture and tool-store stages:
     - `Lessons & pitfalls` → `fact`
     - `Decisions (durable)` → `decision`
   - `Context`, `Open loops`, `Retrieval tags`, `Invariants`, and `Derived` are not auto-mapped as ordinary durable memory categories.
-- Injection / loading behavior:
-  - `before_agent_start` injects `<inherited-rules>` from reflection item rows with legacy `invariants[]` fallback.
-  - `before_prompt_build` injects `<derived-focus>` and `<error-detected>` from reflection item rows with legacy `derived[]` fallback.
-  - Multiple recent reflection items are ranked with logistic decay during reflection loading/injection only; this does **not** modify the global retriever scoring pipeline.
+- Decay algorithm and built-in profiles:
+  - Reflection loading/injection uses logistic decay only; this does **not** modify the global retriever scoring pipeline.
+  - Formula: `weight = 1 / (1 + exp(k * (ageDays - midpointDays)))`
+  - Built-in reflection item profiles:
+    - `invariant`: midpointDays=`45`, `k=0.22`, `baseWeight=1.10`, `quality=1.00`
+    - `derived`: midpointDays=`7`, `k=0.65`, `baseWeight=1.00`, `quality=0.95`
+  - Built-in mapped durable-memory profiles:
+    - `decision`: midpointDays=`45`, `k=0.25`, `baseWeight=1.10`, `quality=1.00`
+    - `user-model`: midpointDays=`21`, `k=0.30`, `baseWeight=1.00`, `quality=0.95`
+    - `agent-model`: midpointDays=`10`, `k=0.35`, `baseWeight=0.95`, `quality=0.93`
+    - `lesson`: midpointDays=`7`, `k=0.45`, `baseWeight=0.90`, `quality=0.90`
+  - These decay parameters are currently implementation-defined metadata written by the plugin, not user-configurable `memoryReflection.*` schema fields.
   - Fallback-generated rows receive an extra score penalty factor (`0.75`).
 - Dedicated agent (optional):
   - `memoryReflection.agentId` can point to a dedicated reflection agent such as `memory-distiller`.
